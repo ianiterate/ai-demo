@@ -179,7 +179,10 @@
   .link-btn{font:inherit;font-size:13.5px;color:var(--muted);background:none;border:none;cursor:pointer;text-decoration:underline}
   .link-btn:hover{color:var(--ink)}
   .ai-notice{margin-top:18px;background:var(--card);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:10px;padding:12px 14px;font-size:14px;max-width:70ch}
-  .ai-notice a{color:var(--accent);font-weight:600;white-space:nowrap}
+  .key-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+  .key-row input{flex:1 1 220px;min-width:0;background:var(--paper);border:1px solid var(--line);border-radius:9px;font:inherit;font-size:14px;color:var(--ink);padding:8px 11px}
+  .key-row input:focus{outline:none;border-color:var(--accent)}
+  .key-state{display:block;margin-top:7px;font-size:12.5px;color:var(--muted)}
   .tile.touch-drag{opacity:.35}
   .saved{font-family:"Space Mono",monospace;font-size:11px;color:var(--accent);letter-spacing:.1em}
 </style>
@@ -192,8 +195,13 @@
     <h1>Social media plan</h1>
     <p class="lede">Een hulpmiddel om elke maand strategisch geplande content te publiceren, zonder de dagelijkse twijfel en stress. Je verschuift van elke-dag-content-stress naar één dag shooten en één dag alles voorbereiden en inplannen. Daarna staat je hele maand klaar.</p>
     <div class="ai-notice" id="aiNotice" hidden>
-      <b>De AI-knoppen werken binnen Claude.</b> Hier kan je alles plannen, maar voor captions, ideeën en thema's open je de tool in Claude, met je eigen (ook gratis) Claude-account.
-      <a href="https://claude.ai/artifact/GTimYtgeoHSzJ9Z3Wgs1WC" target="_blank" rel="noopener">Open in Claude →</a>
+      <b>AI-sleutel</b> · Plak hier de API-sleutel die je van je lesgever kreeg. Ze blijft enkel in deze browser bewaard en wordt alleen naar Anthropic gestuurd.
+      <form class="key-row" id="keyForm" autocomplete="off">
+        <input type="password" id="apiKey" placeholder="sk-ant-…" spellcheck="false" aria-label="API-sleutel">
+        <button class="gen" type="submit" id="keySave">Bewaar</button>
+        <button class="link-btn" type="button" id="keyClear" hidden>Wis sleutel</button>
+      </form>
+      <span class="key-state" id="keyState"></span>
     </div>
   </header>
 
@@ -262,7 +270,7 @@
   </footer>
 
   <p style="font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.12em;color:var(--muted);margin-top:26px;text-align:center">
-    VERSIE 17 · 23 SEPT 2026 · AI VIA JE EIGEN CLAUDE-ACCOUNT
+    VERSIE 17 · 23 SEPT 2026 · AI VIA CLAUDE OF API-SLEUTEL
   </p>
 
 </div>
@@ -431,8 +439,9 @@ document.getElementById('addRow').onclick = ()=>{
   renderBatch(); renderFeed(); renderBalance(); debSave();
 };
 
-/* ---------- AI-aanroep: via het eigen Claude-account van de gebruiker (ook gratis) ---------- */
-const CLAUDE_URL = 'https://claude.ai/artifact/GTimYtgeoHSzJ9Z3Wgs1WC';
+/* ---------- AI-aanroep: ingebouwde Claude indien beschikbaar, anders eigen API-sleutel ---------- */
+const API_MODEL = 'claude-sonnet-5';
+const KEY_STORE = 'smplan:apikey';
 let samplePromise = null;
 function getSample(){
   if(!samplePromise){
@@ -442,33 +451,92 @@ function getSample(){
   }
   return samplePromise;
 }
+function getKey(){ try{ return (localStorage.getItem(KEY_STORE)||'').trim(); }catch(_){ return ''; } }
 let aiBlocked = false;   // na not_granted e.d. niet opnieuw vragen in deze sessie
 function btnMsg(btn, orig, msg, ms){ btn.disabled=false; btn.textContent=msg; setTimeout(()=>{ if(btn.textContent===msg) btn.textContent=orig; }, ms||3200); }
 function aiErr(e){
   const c = (e && e.code) || (e && e.message) || '';
   const st = document.getElementById('aiStatus');
   if(st) st.textContent = 'AI-status: ' + (c || 'onbekend') + (e && e.message && e.message!==c ? ' · ' + e.message : '');
-  if(c==='unavailable'){ showAiNotice(); return 'AI werkt enkel in Claude'; }
+  if(c==='no_key'){ showAiNotice(); document.getElementById('apiKey').focus(); return 'vul eerst je API-sleutel in'; }
+  if(c==='bad_key') return 'API-sleutel ongeldig';
+  if(c==='no_credit') return 'budget van de sleutel is op';
+  if(c==='network') return 'geen verbinding, opnieuw?';
   if(c==='not_granted'||c==='sampling_disabled'||c==='not_declared'||c==='capability_disabled'){ aiBlocked=true; return 'AI niet toegestaan'; }
-  if(c==='rate_limited') return 'limiet bereikt, probeer later';
+  if(c==='rate_limited') return 'even te druk, probeer zo opnieuw';
   if(c==='session_expired') return 'log opnieuw in bij Claude';
   if(c==='refused') return 'Claude weigerde, pas je idee aan';
   if(c==='empty_completion'||c==='leeg') return 'leeg antwoord, opnieuw?';
   if(c==='invalid_json') return 'onverwacht antwoord, opnieuw?';
   return 'AI lukte niet, opnieuw?';
 }
+async function callApi(input){
+  const key = getKey();
+  if(!key) throw {code:'no_key'};
+  let res;
+  try{
+    res = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{
+        'content-type':'application/json',
+        'x-api-key': key,
+        'anthropic-version':'2023-06-01',
+        'anthropic-dangerous-direct-browser-access':'true'
+      },
+      body: JSON.stringify({model:API_MODEL, max_tokens:1024, messages:[{role:'user', content:input}]})
+    });
+  }catch(_){ throw {code:'network'}; }
+  let data = null; try{ data = await res.json(); }catch(_){}
+  if(!res.ok){
+    const msg = (data && data.error && data.error.message) || ('HTTP '+res.status);
+    if(res.status===401||res.status===403) throw {code:'bad_key', message:msg};
+    if(res.status===429) throw {code:'rate_limited', message:msg};
+    if(/credit|billing|spend|limit/i.test(msg)) throw {code:'no_credit', message:msg};
+    throw {code:'upstream_error', message:msg};
+  }
+  const text = ((data && data.content)||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n').trim();
+  if(!text) throw {code:'leeg'};
+  return text;
+}
+function parseJsonLoose(text){
+  const t = text.replace(/```(?:json)?/g,'').trim();
+  try{ return JSON.parse(t); }catch(_){}
+  const a = t.indexOf('{'), b = t.lastIndexOf('}');
+  if(a>=0 && b>a){ try{ return JSON.parse(t.slice(a,b+1)); }catch(_){} }
+  throw {code:'invalid_json'};
+}
 async function callClaude(sys, usr, opts){
-  const sample = await getSample();
-  if(!sample || aiBlocked) throw {code: aiBlocked ? 'not_granted' : 'unavailable'};
   const input = sys + '\n\n' + usr;
-  if(opts && opts.json) return await sample.json(input, {cache:false});
-  const r = await sample(input, {cache:false});
-  return (r && r.text ? r.text : '').trim();
+  const sample = aiBlocked ? null : await getSample();
+  if(sample){
+    if(opts && opts.json) return await sample.json(input, {cache:false});
+    const r = await sample(input, {cache:false});
+    return (r && r.text ? r.text : '').trim();
+  }
+  const text = await callApi(input);
+  return (opts && opts.json) ? parseJsonLoose(text) : text;
 }
 function showAiNotice(){ const n=document.getElementById('aiNotice'); if(n) n.hidden=false; }
+function renderKeyState(){
+  const has = !!getKey();
+  document.getElementById('keyClear').hidden = !has;
+  document.getElementById('keyState').textContent = has ? 'Sleutel bewaard in deze browser ✓' : 'Nog geen sleutel ingevuld.';
+  document.getElementById('apiKey').value = '';
+  document.getElementById('apiKey').placeholder = has ? '•••• (bewaard, plak een nieuwe om te vervangen)' : 'sk-ant-…';
+  getSample().then(s=>{ if(!s) document.getElementById('aiStatus').textContent = 'AI-status: ' + (has ? 'via API-sleutel' : 'geen API-sleutel'); });
+}
+document.getElementById('keyForm').addEventListener('submit', e=>{
+  e.preventDefault();
+  const v = document.getElementById('apiKey').value.trim();
+  if(!v) return;
+  try{ localStorage.setItem(KEY_STORE, v); }catch(_){ document.getElementById('keyState').textContent='Deze browser laat niet toe om de sleutel te bewaren.'; return; }
+  renderKeyState();
+});
+document.getElementById('keyClear').onclick = ()=>{ try{ localStorage.removeItem(KEY_STORE); }catch(_){} renderKeyState(); };
+renderKeyState();
 getSample().then(s=>{
   const st = document.getElementById('aiStatus');
-  if(st) st.textContent = 'AI-status: ' + (s ? 'beschikbaar' : (window.claude ? 'niet beschikbaar in deze weergave' : 'buiten Claude'));
+  if(st) st.textContent = 'AI-status: ' + (s ? 'via je Claude-account' : (getKey() ? 'via API-sleutel' : 'geen API-sleutel'));
   if(!s) showAiNotice();
 });
 
