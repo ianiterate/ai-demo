@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Social media plan voor de hele maand</title>
+<title>Social media plan tool</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Hanken+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -192,10 +192,10 @@
 
   <header class="hero">
     <p class="eyebrow">Eén dag plannen · de hele maand rust</p>
-    <h1>Social media plan</h1>
+    <h1>Social media plan tool</h1>
     <p class="lede">Een hulpmiddel om elke maand strategisch geplande content te publiceren, zonder de dagelijkse twijfel en stress. Je verschuift van elke-dag-content-stress naar één dag shooten en één dag alles voorbereiden en inplannen. Daarna staat je hele maand klaar.</p>
     <div class="ai-notice" id="aiNotice" hidden>
-      <b>AI-sleutel</b> · Plak hier de API-sleutel die je van je lesgever kreeg. Ze blijft enkel in deze browser bewaard en wordt alleen naar Anthropic gestuurd.
+      <b>Sleutel-code</b> · Vul hier je sleutel-code in die je ontvangen hebt van je lesgever. Ze blijft enkel in deze browser bewaard.
       <form class="key-row" id="keyForm" autocomplete="off">
         <input type="password" id="apiKey" placeholder="sk-ant-…" spellcheck="false" aria-label="API-sleutel">
         <button class="gen" type="submit" id="keySave">Bewaar</button>
@@ -210,9 +210,9 @@
     <div class="step-head"><span class="step-num">01</span><h2 class="step-title">Jouw vaste basis</h2></div>
     <p class="step-sub">Dit vul je één keer in en het blijft elke maand staan. Heb je al een skill of merkgids? Plak die gerust. Zo niet, beschrijf jezelf gewoon hieronder. Op deze basis schrijft de AI captions die als jou klinken.</p>
 
-    <label class="lbl">Content pillars</label>
+    <label class="lbl">Content categorieën</label>
     <div class="pillars" id="pillars"></div>
-    <button class="ghost-btn" id="addPillar">+ pillar</button>
+    <button class="ghost-btn" id="addPillar">+ categorie</button>
 
     <div class="voice-wrap">
       <label class="lbl" for="skill">Jouw verhaal</label>
@@ -223,7 +223,7 @@
 
   <!-- STAP 2: THEMA -->
   <section class="step">
-    <div class="step-head"><span class="step-num">02</span><h2 class="step-title">Thema van de maand</h2></div>
+    <div class="step-head"><span class="step-num">02</span><h2 class="step-title">Thema van de maand of content pillaren</h2></div>
     <p class="step-sub">Eén overkoepelende invalshoek die als rode draad door je posts loopt. Laat de AI een voorstel doen op basis van je verhaal hierboven, en pas het aan tot het klopt. Je hoeft het dus niet zelf te bedenken.</p>
     <div class="theme-wrap">
       <textarea id="theme" placeholder="Klik op ‘Stel een thema voor’ om te starten. Je krijgt een themanaam en één zin die je vrij mag aanpassen."></textarea>
@@ -243,15 +243,15 @@
   <!-- STAP 4 -->
   <section class="step">
     <div class="step-head"><span class="step-num">04</span><h2 class="step-title">Feed &amp; balans</h2></div>
-    <p class="step-sub">Je feed in 3:4 (het huidige Instagram-formaat), met je eigen foto's erin. Zie je een rode draad, of springt er één pillar te veel uit? Zo controleer je of je strategie zichtbaar is vóór je plant.</p>
+    <p class="step-sub">Je feed in 3:4 (het huidige Instagram-formaat), met je eigen foto's erin. Zie je een rode draad, of springt er één categorie te veel uit? Zo controleer je of je strategie zichtbaar is vóór je plant.</p>
     <div class="two-col">
       <div>
         <label class="lbl">Feed-preview</label>
-        <p class="hint" style="margin-top:-2px;margin-bottom:12px">Sleep een tegel naar een andere plek om je feed te herschikken. De volledige post (foto, pillar, formaat, idee en caption) schuift mee.</p>
+        <p class="hint" style="margin-top:-2px;margin-bottom:12px">Sleep een tegel naar een andere plek om je feed te herschikken. De volledige post (foto, categorie, formaat, idee en caption) schuift mee.</p>
         <div class="feed-grid" id="feed"></div>
       </div>
       <div class="balance">
-        <label class="lbl">Verdeling per pillar</label>
+        <label class="lbl">Verdeling per categorie</label>
         <div class="bal-bar" id="balBar"></div>
         <div class="bal-legend" id="balLegend"></div>
       </div>
@@ -344,7 +344,7 @@ function renderPillars(){
     inp.value = p.name; inp.size = Math.max(p.name.length,6);
     inp.oninput = ()=>{ p.name=inp.value; inp.size=Math.max(inp.value.length,6); renderPostSelectors(); renderFeed(); renderBalance(); debSave(); };
     const x = document.createElement('button');
-    x.className='x'; x.textContent='×'; x.title='Verwijder pillar';
+    x.className='x'; x.textContent='×'; x.title='Verwijder categorie';
     x.onclick = ()=>{ state.pillars = state.pillars.filter(q=>q.id!==p.id);
       state.posts.forEach(po=>{ if(po.pillarId===p.id) po.pillarId=''; });
       renderAll(); debSave(); };
@@ -355,7 +355,7 @@ function renderPillars(){
 document.getElementById('addPillar').onclick = ()=>{
   const used = state.pillars.map(p=>p.color);
   const color = COLORS.find(c=>!used.includes(c)) || COLORS[state.pillars.length % COLORS.length];
-  state.pillars.push({id:'pil'+Date.now(), name:'Nieuwe pillar', color});
+  state.pillars.push({id:'pil'+Date.now(), name:'Nieuwe categorie', color});
   renderAll(); debSave();
 };
 
@@ -367,7 +367,7 @@ function formatOptions(selVal){
   return o;
 }
 function pillarOptions(sel){
-  let o = `<option value="">kies een pillar</option>`;
+  let o = `<option value="">kies een categorie</option>`;
   state.pillars.forEach(p=>{ o+=`<option value="${p.id}" ${p.id===sel?'selected':''}>${escapeHtml(p.name)}</option>`; });
   return o;
 }
@@ -554,7 +554,7 @@ Schrijf ALLEEN de caption zelf, zonder uitleg, aanhalingstekens of titel.`;
   const usr = `Vaste basis van de ondernemer (volg dit strikt voor toon, doelgroep, stijl en aanbod):
 ${(state.skill||'').trim() || '(niet opgegeven, hou het dan neutraal maar menselijk)'}
 ${(state.theme||'').trim() ? '\nThema van de maand (laat de post hierbij aansluiten): '+state.theme.trim()+'\n' : ''}${post.format ? '\nFormaat van deze post: '+post.format+'. Pas de caption hierop aan:\n- Reel: kort, sterke hook, één duidelijke CTA, hooguit enkele regels.\n- Carrousel: de caption teast en vult aan (bijv. "swipe voor..."), niet alles staat al in de caption zelf.\n- Post: de caption draagt zelf het volledige verhaal en mag wat langer zijn.\n- Talking head video: de caption ondersteunt de video, vat de kern samen of geeft context, en nodigt uit om te kijken.\n' : ''}
-Content pillar: ${pillar ? pillar.name : 'niet gekozen'}
+Contentcategorie: ${pillar ? pillar.name : 'niet gekozen'}
 Waar deze post over gaat: ${post.idea.trim()}
 
 Schrijf één caption die past bij het formaat.`;
@@ -591,7 +591,7 @@ Gebruik nooit een gedachtestreepje (— of –).`;
   const usr = `Wie ik ben en wat ik doe:
 ${(state.skill||'').trim() || '(niet opgegeven)'}
 ${(state.theme||'').trim() ? '\nThema van de maand: '+state.theme.trim() : ''}
-${pillar ? '\nContent pillar voor deze post: '+pillar.name : ''}
+${pillar ? '\nContentcategorie voor deze post: '+pillar.name : ''}
 ${others.length ? '\nDeze onderwerpen zijn al gepland, kies iets anders:\n'+others.join('\n') : ''}
 
 Geef één post-idee met passend formaat.`;
@@ -773,7 +773,7 @@ function renderBalance(){
   });
   if(assigned===0){
     bar.innerHTML='';
-    const s=document.createElement('div'); s.className='bal-item'; s.textContent='Nog geen posts aan een pillar toegewezen.';
+    const s=document.createElement('div'); s.className='bal-item'; s.textContent='Nog geen posts aan een categorie toegewezen.';
     leg.appendChild(s);
   }
 }
@@ -789,19 +789,19 @@ document.getElementById('themeBtn').onclick = ()=>proposeTheme();
 document.getElementById('copyBtn').onclick = ()=>{
   let out = `CONTENT BATCH\n\n`;
   if((state.theme||'').trim()) out += `Thema van de maand:\n${state.theme.trim()}\n\n`;
-  out += `Pillars:\n`;
+  out += `Categorieën:\n`;
   state.pillars.forEach(p=>out+=`• ${p.name}\n`);
   out+=`\nJouw verhaal / basis:\n${state.skill||'(leeg)'}\n\nPosts:\n`;
   state.posts.forEach((po,i)=>{
     const p=state.pillars.find(q=>q.id===po.pillarId);
-    out+=`\n${String(i+1).padStart(2,'0')}: ${p?p.name:'geen pillar'}${po.format?' ('+po.format+')':''}\nIdee: ${po.idea||'-'}\n${po.caption?('Caption:\n'+po.caption+'\n'):''}`;
+    out+=`\n${String(i+1).padStart(2,'0')}: ${p?p.name:'geen categorie'}${po.format?' ('+po.format+')':''}\nIdee: ${po.idea||'-'}\n${po.caption?('Caption:\n'+po.caption+'\n'):''}`;
   });
   navigator.clipboard.writeText(out).then(()=>flash('gekopieerd ✓'))
     .catch(()=>flash('kopiëren lukte niet'));
 };
 
 /* ---------- export naar tabel ---------- */
-const TABLE_HEAD = ['Nr','Pillar','Format','Idee','Caption','Foto','Datum','Kanaal'];
+const TABLE_HEAD = ['Nr','Categorie','Format','Idee','Caption','Foto','Datum','Kanaal'];
 function flatten(s){ return (s||'').replace(/\s*\n+\s*/g,' ').replace(/\t/g,' ').replace(/\s{2,}/g,' ').trim(); }
 function tableRows(flat){
   return state.posts.map((po,i)=>{
