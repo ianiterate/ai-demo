@@ -258,6 +258,7 @@
       <button class="link-btn" id="resetBtn">Leegmaken</button>
     </div>
     <span class="saved" id="savedTag"></span>
+    <span class="saved" id="aiStatus" style="color:var(--muted);flex-basis:100%"></span>
   </footer>
 
   <p style="font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.12em;color:var(--muted);margin-top:26px;text-align:center">
@@ -445,6 +446,8 @@ let aiBlocked = false;   // na not_granted e.d. niet opnieuw vragen in deze sess
 function btnMsg(btn, orig, msg, ms){ btn.disabled=false; btn.textContent=msg; setTimeout(()=>{ if(btn.textContent===msg) btn.textContent=orig; }, ms||3200); }
 function aiErr(e){
   const c = (e && e.code) || (e && e.message) || '';
+  const st = document.getElementById('aiStatus');
+  if(st) st.textContent = 'AI-status: ' + (c || 'onbekend') + (e && e.message && e.message!==c ? ' · ' + e.message : '');
   if(c==='unavailable'){ showAiNotice(); return 'AI werkt enkel in Claude'; }
   if(c==='not_granted'||c==='sampling_disabled'||c==='not_declared'||c==='capability_disabled'){ aiBlocked=true; return 'AI niet toegestaan'; }
   if(c==='rate_limited') return 'limiet bereikt, probeer later';
@@ -463,7 +466,11 @@ async function callClaude(sys, usr, opts){
   return (r && r.text ? r.text : '').trim();
 }
 function showAiNotice(){ const n=document.getElementById('aiNotice'); if(n) n.hidden=false; }
-getSample().then(s=>{ if(!s) showAiNotice(); });
+getSample().then(s=>{
+  const st = document.getElementById('aiStatus');
+  if(st) st.textContent = 'AI-status: ' + (s ? 'beschikbaar' : (window.claude ? 'niet beschikbaar in deze weergave' : 'buiten Claude'));
+  if(!s) showAiNotice();
+});
 
 /* ---------- AI captiongeneratie ---------- */
 async function generate(post, btn){
