@@ -263,14 +263,18 @@
       <button class="primary" id="tableBtn">Kopieer als tabel</button>
       <button class="primary" id="csvBtn" style="background:var(--accent)">Download .csv</button>
       <button class="link-btn" id="copyBtn">Kopieer als tekst</button>
+      <button class="link-btn" id="backupBtn">Download back-up</button>
+      <button class="link-btn" id="restoreBtn">Back-up laden</button>
+      <input type="file" id="restoreFile" accept=".json,application/json" hidden>
       <button class="link-btn" id="resetBtn">Leegmaken</button>
     </div>
     <span class="saved" id="savedTag"></span>
+    <p class="hint" style="flex-basis:100%;margin:0">Je werk wordt automatisch bewaard in deze browser. Wissel je van toestel of browser? Download een back-up en laad die daar opnieuw.</p>
     <span class="saved" id="aiStatus" style="color:var(--muted);flex-basis:100%"></span>
   </footer>
 
   <p style="font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.12em;color:var(--muted);margin-top:26px;text-align:center">
-    VERSIE 17 · 23 SEPT 2026 · AI VIA CLAUDE OF API-SLEUTEL
+    VERSIE 18 · 23 SEPT 2026 · AI VIA CLAUDE OF API-SLEUTEL
   </p>
 
 </div>
@@ -287,12 +291,25 @@ function defaultPillars(){
     {id:'d', name:'Aanbod',     color:COLORS[3]},
   ];
 }
-let state = {
-  pillars: defaultPillars(),
-  skill: '',
-  theme: '',
-  posts: Array.from({length:9}, (_,i)=>({id:'p'+i, pillarId:'', idea:'', caption:'', photo:'', format:''})),
-};
+function emptyPost(id){ return {id, pillarId:'', idea:'', caption:'', photo:'', format:''}; }
+function freshState(){
+  return { pillars: defaultPillars(), skill:'', theme:'', posts: Array.from({length:9}, (_,i)=>emptyPost('p'+i)) };
+}
+// vult ontbrekende velden aan, zodat een oude of onvolledige opslag de pagina niet breekt
+function normalizeState(raw){
+  const base = freshState();
+  if(!raw || typeof raw!=='object') return base;
+  const str = v => typeof v==='string' ? v : '';
+  const pillars = Array.isArray(raw.pillars)
+    ? raw.pillars.filter(p=>p && p.id).map((p,i)=>({id:String(p.id), name:str(p.name), color: COLORS.includes(p.color) ? p.color : COLORS[i % COLORS.length]}))
+    : base.pillars;
+  const posts = Array.isArray(raw.posts)
+    ? raw.posts.filter(p=>p && typeof p==='object').map((p,i)=>({...emptyPost(p.id ? String(p.id) : 'r'+i+'_'+Date.now()),
+        pillarId:str(p.pillarId), idea:str(p.idea), caption:str(p.caption), photo:str(p.photo), format:str(p.format)}))
+    : base.posts;
+  return { pillars, skill: str(raw.skill) || str(raw.voice), theme: str(raw.theme), posts };
+}
+let state = freshState();
 
 /* ---------- persistentie ---------- */
 async function save(){
@@ -309,9 +326,7 @@ async function load(){
   try{
     const r = localStorage.getItem('smplan:v1');
     if(r){
-      const loaded = JSON.parse(r);
-      if(loaded.voice && !loaded.skill){ loaded.skill = loaded.voice; }   // migratie oude versie
-      state = loaded;
+      state = normalizeState(JSON.parse(r));
     }
   }catch(e){}
   try{
@@ -330,7 +345,12 @@ function flash(msg){
   clearTimeout(flashT);
   flashT = setTimeout(()=>{ tag.textContent=''; }, 1800);
 }
-const debSave = (()=>{let t;return()=>{clearTimeout(t);t=setTimeout(save,600);};})();
+let saveTimer = null;
+function debSave(){ clearTimeout(saveTimer); saveTimer = setTimeout(()=>{ saveTimer=null; save(); }, 600); }
+function flushSave(){ if(saveTimer){ clearTimeout(saveTimer); saveTimer=null; save(); } }
+// niets verliezen als iemand de tab sluit of herlaadt vlak na het typen
+addEventListener('pagehide', flushSave);
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='hidden') flushSave(); });
 
 /* ---------- render: pillars ---------- */
 function renderPillars(){
@@ -827,21 +847,8 @@ function csvCell(v){ v=(v==null?'':String(v)); return /[",\n\r]/.test(v) ? '"'+v
 document.getElementById('csvBtn').onclick = async ()=>{
   const rows = [TABLE_HEAD, ...tableRows(false)].map(r=>r.map(csvCell).join(','));
   const csv = '\uFEFF' + rows.join('\r\n');   // BOM = accenten kloppen in Excel
-  try{
-    const downloads = (window.claude && claude.use) ? await claude.use('downloads') : null;
-    if(downloads){
-      await downloads.save({filename:'social-media-plan.csv', data: csv});
-      flash('csv gedownload ✓');
-      return;
-    }
-  }catch(e){ /* val terug op de klassieke methode */ }
-  try{
-    const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href=url; a.download='social-media-plan.csv';
-    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-    flash('csv gedownload ✓');
-  }catch(e){ flash('download lukte niet · gebruik Kopieer als tabel'); }
+  try{ await offerFile('social-media-plan.csv', csv, 'text/csv;charset=utf-8'); flash('csv gedownload ✓'); }
+  catch(e){ flash('download lukte niet · gebruik Kopieer als tabel'); }
 };
 let resetArmed=false, resetTimer=null;
 document.getElementById('resetBtn').onclick = ()=>{
@@ -852,9 +859,44 @@ document.getElementById('resetBtn').onclick = ()=>{
     return;
   }
   clearTimeout(resetTimer); resetArmed=false; btn.textContent='Leegmaken';
-  state = { pillars:defaultPillars(), skill:'', theme:'',
-    posts: Array.from({length:9},(_,i)=>({id:'p'+i,pillarId:'',idea:'',caption:'',photo:'',format:''})) };
+  state = freshState();
   renderAll(); save();
+};
+
+/* ---------- back-up naar bestand en terug ---------- */
+async function offerFile(filename, data, type){
+  try{
+    const downloads = (window.claude && claude.use) ? await claude.use('downloads') : null;
+    if(downloads){ await downloads.save({filename, data}); return true; }
+  }catch(e){ /* val terug op de klassieke methode */ }
+  const blob = new Blob([data], {type});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download=filename;
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  return true;
+}
+document.getElementById('backupBtn').onclick = async ()=>{
+  flushSave();
+  const day = new Date().toISOString().slice(0,10);
+  const data = JSON.stringify({app:'social-media-plan-tool', version:1, savedAt:new Date().toISOString(), state});
+  try{ await offerFile('social-media-plan-backup-'+day+'.json', data, 'application/json'); flash('back-up gedownload ✓'); }
+  catch(e){ flash('download lukte niet'); }
+};
+document.getElementById('restoreBtn').onclick = ()=>document.getElementById('restoreFile').click();
+document.getElementById('restoreFile').onchange = async e=>{
+  const input = e.target, file = input.files && input.files[0];
+  input.value = '';
+  if(!file) return;
+  try{
+    const raw = JSON.parse(await file.text());
+    const src = raw && raw.state ? raw.state : raw;
+    if(!src || !Array.isArray(src.posts) || !Array.isArray(src.pillars)) throw new Error('geen back-up');
+    state = normalizeState(src);
+    renderAll(); save();
+    flash('back-up geladen ✓');
+  }catch(err){
+    flash('dit is geen geldige back-up, er is niets veranderd');
+  }
 };
 
 /* ---------- helpers ---------- */
