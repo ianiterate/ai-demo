@@ -73,7 +73,13 @@
 
   .voice-wrap{margin-top:20px}
   .theme-wrap{display:flex;flex-direction:column;gap:12px;align-items:flex-start;margin-top:4px}
-  .theme-wrap textarea{min-height:64px}
+  .theme-list{display:flex;flex-direction:column;gap:8px;width:100%}
+  .theme-row{display:flex;gap:8px;align-items:center}
+  .theme-row .tnr{font-family:"Space Mono",monospace;font-size:12px;color:var(--muted);width:22px;flex:none}
+  .theme-row .idea{flex:1;min-width:0}
+  .theme-row .x{border:none;background:transparent;color:var(--muted);cursor:pointer;font-size:18px;line-height:1;padding:0 4px}
+  .theme-row .x:hover{color:var(--p1)}
+  .theme-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
   label.lbl{
     display:block;font-family:"Space Mono",monospace;font-size:11px;
     letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:7px;
@@ -221,15 +227,18 @@
     </div>
   </section>
 
-  <!-- STAP 2: THEMA -->
+  <!-- STAP 2: THEMA'S -->
   <section class="step">
-    <div class="step-head"><span class="step-num">02</span><h2 class="step-title">Thema van de maand of content pillaren</h2></div>
-    <p class="step-sub">Eén overkoepelende invalshoek die als rode draad door je posts loopt. Laat de AI een voorstel doen op basis van je verhaal hierboven, en pas het aan tot het klopt. Je hoeft het dus niet zelf te bedenken.</p>
+    <div class="step-head"><span class="step-num">02</span><h2 class="step-title">Thema's van de maand</h2></div>
+    <p class="step-sub">Kies drie of meer thema's die als rode draad door je maand lopen. Elke post krijgt automatisch één thema, en de thema's worden eerlijk over je posts verdeeld, in willekeurige volgorde. Laat de AI gerust een voorstel doen op basis van je verhaal hierboven.</p>
     <div class="theme-wrap">
-      <textarea id="theme" placeholder="Klik op ‘Stel een thema voor’ om te starten. Je krijgt een themanaam en één zin die je vrij mag aanpassen."></textarea>
-      <button class="gen" id="themeBtn">Stel een thema voor</button>
+      <div class="theme-list" id="themes"></div>
+      <div class="theme-actions">
+        <button class="ghost-btn" id="addTheme">+ thema</button>
+        <button class="gen" id="themeBtn">Stel thema's voor</button>
+      </div>
     </div>
-    <p class="hint">Dit thema wordt mee doorgegeven aan elke caption, zodat je maand samenhangt.</p>
+    <p class="hint">In stap 03 zie je welk thema elke post kreeg, en kan je het zelf aanpassen. Enkel dat ene thema gaat mee naar de AI.</p>
   </section>
 
   <!-- STAP 3 -->
@@ -274,7 +283,7 @@
   </footer>
 
   <p style="font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.12em;color:var(--muted);margin-top:26px;text-align:center">
-    VERSIE 18 · 23 SEPT 2026 · AI VIA CLAUDE OF API-SLEUTEL
+    VERSIE 19 · 25 SEPT 2026 · AI VIA CLAUDE OF API-SLEUTEL
   </p>
 
 </div>
@@ -291,9 +300,13 @@ function defaultPillars(){
     {id:'d', name:'Aanbod',     color:COLORS[3]},
   ];
 }
-function emptyPost(id){ return {id, pillarId:'', idea:'', caption:'', photo:'', format:''}; }
+const MIN_THEMES = 3;
+function newId(prefix){ return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+function emptyPost(id){ return {id, pillarId:'', themeId:'', idea:'', caption:'', photo:'', format:''}; }
 function freshState(){
-  return { pillars: defaultPillars(), skill:'', theme:'', posts: Array.from({length:9}, (_,i)=>emptyPost('p'+i)) };
+  return { pillars: defaultPillars(), skill:'',
+    themes: Array.from({length:MIN_THEMES}, (_,i)=>({id:'t'+i, text:''})),
+    posts: Array.from({length:9}, (_,i)=>emptyPost('p'+i)) };
 }
 // vult ontbrekende velden aan, zodat een oude of onvolledige opslag de pagina niet breekt
 function normalizeState(raw){
@@ -305,9 +318,14 @@ function normalizeState(raw){
     : base.pillars;
   const posts = Array.isArray(raw.posts)
     ? raw.posts.filter(p=>p && typeof p==='object').map((p,i)=>({...emptyPost(p.id ? String(p.id) : 'r'+i+'_'+Date.now()),
-        pillarId:str(p.pillarId), idea:str(p.idea), caption:str(p.caption), photo:str(p.photo), format:str(p.format)}))
+        pillarId:str(p.pillarId), themeId:str(p.themeId), idea:str(p.idea), caption:str(p.caption), photo:str(p.photo), format:str(p.format)}))
     : base.posts;
-  return { pillars, skill: str(raw.skill) || str(raw.voice), theme: str(raw.theme), posts };
+  // thema's: nieuwe lijst, of het oude ene tekstveld opgesplitst per regel
+  let themes = Array.isArray(raw.themes)
+    ? raw.themes.filter(t=>t && t.id).map(t=>({id:String(t.id), text:str(t.text)}))
+    : str(raw.theme).split('\n').map(l=>l.trim()).filter(Boolean).map((text,i)=>({id:'t'+i, text}));
+  while(themes.length < MIN_THEMES) themes.push({id:newId('t'), text:''});
+  return { pillars, skill: str(raw.skill) || str(raw.voice), themes, posts };
 }
 let state = freshState();
 
@@ -391,6 +409,36 @@ function pillarOptions(sel){
   state.pillars.forEach(p=>{ o+=`<option value="${p.id}" ${p.id===sel?'selected':''}>${escapeHtml(p.name)}</option>`; });
   return o;
 }
+function themeLabel(t, i){
+  const txt = (t.text||'').trim().split('\n')[0];
+  return txt ? (txt.length>42 ? txt.slice(0,40)+'…' : txt) : 'Thema '+(i+1);
+}
+function filledThemes(){ return state.themes.filter(t=>(t.text||'').trim()); }
+function themeOptions(sel){
+  let o = `<option value="">thema: automatisch</option>`;
+  state.themes.forEach((t,i)=>{ if((t.text||'').trim()) o+=`<option value="${t.id}" ${t.id===sel?'selected':''}>${escapeHtml(themeLabel(t,i))}</option>`; });
+  return o;
+}
+// kies voor deze post het thema dat het minst gebruikt is (willekeurig bij gelijkstand) en onthoud het
+function pickTheme(post){
+  const valid = filledThemes();
+  if(!valid.length) return null;
+  const cur = valid.find(t=>t.id===post.themeId);
+  if(cur) return cur;
+  const counts = new Map(valid.map(t=>[t.id,0]));
+  state.posts.forEach(p=>{ if(p!==post && counts.has(p.themeId)) counts.set(p.themeId, counts.get(p.themeId)+1); });
+  const min = Math.min(...counts.values());
+  const pool = valid.filter(t=>counts.get(t.id)===min);
+  const t = pool[Math.floor(Math.random()*pool.length)];
+  post.themeId = t.id;
+  renderThemeSelectors(); debSave();
+  return t;
+}
+function renderThemeSelectors(){
+  document.querySelectorAll('#batch select.thm-select').forEach((sel,i)=>{
+    sel.innerHTML = themeOptions(state.posts[i]?.themeId);
+  });
+}
 function renderBatch(){
   const el = document.getElementById('batch');
   el.innerHTML='';
@@ -401,13 +449,16 @@ function renderBatch(){
     no.textContent = String(i+1).padStart(2,'0');
 
     const selWrap = document.createElement('div'); selWrap.className='sel-wrap';
-    const sel = document.createElement('select');
+    const sel = document.createElement('select'); sel.className='pil-select';
     sel.innerHTML = pillarOptions(post.pillarId);
     sel.onchange = ()=>{ post.pillarId=sel.value; renderFeed(); renderBalance(); debSave(); };
     const fmt = document.createElement('select'); fmt.className='fmt-select';
     fmt.innerHTML = formatOptions(post.format);
     fmt.onchange = ()=>{ post.format=fmt.value; renderFeed(); debSave(); };
-    selWrap.appendChild(sel); selWrap.appendChild(fmt);
+    const thm = document.createElement('select'); thm.className='fmt-select thm-select';
+    thm.innerHTML = themeOptions(post.themeId);
+    thm.onchange = ()=>{ post.themeId=thm.value; debSave(); };
+    selWrap.appendChild(sel); selWrap.appendChild(fmt); selWrap.appendChild(thm);
 
     const cell = document.createElement('div'); cell.className='cell-idea';
     const idea = document.createElement('input');
@@ -450,7 +501,7 @@ function renderBatch(){
   });
 }
 function renderPostSelectors(){
-  document.querySelectorAll('#batch select:not(.fmt-select)').forEach((sel,i)=>{
+  document.querySelectorAll('#batch select.pil-select').forEach((sel,i)=>{
     sel.innerHTML = pillarOptions(state.posts[i]?.pillarId);
   });
 }
@@ -564,6 +615,7 @@ getSample().then(s=>{
 async function generate(post, btn){
   const pillar = state.pillars.find(p=>p.id===post.pillarId);
   if(!post.idea.trim()){ idealess(btn); return; }
+  const theme = pickTheme(post);
   const orig = btn.textContent;
   btn.disabled=true; btn.textContent='schrijft…';
   const sys = `Je bent copywriter en schrijft in vlot Belgisch Nederlands (je-vorm, natuurlijk, geen stijve constructies). Je schrijft social media captions die klinken als een echt mens, nooit als AI.
@@ -573,7 +625,7 @@ Doe wel: een sterke eerste zin als hook, korte alinea's, en een concrete vraag o
 Schrijf ALLEEN de caption zelf, zonder uitleg, aanhalingstekens of titel.`;
   const usr = `Vaste basis van de ondernemer (volg dit strikt voor toon, doelgroep, stijl en aanbod):
 ${(state.skill||'').trim() || '(niet opgegeven, hou het dan neutraal maar menselijk)'}
-${(state.theme||'').trim() ? '\nThema van de maand (laat de post hierbij aansluiten): '+state.theme.trim()+'\n' : ''}${post.format ? '\nFormaat van deze post: '+post.format+'. Pas de caption hierop aan:\n- Reel: kort, sterke hook, één duidelijke CTA, hooguit enkele regels.\n- Carrousel: de caption teast en vult aan (bijv. "swipe voor..."), niet alles staat al in de caption zelf.\n- Post: de caption draagt zelf het volledige verhaal en mag wat langer zijn.\n- Talking head video: de caption ondersteunt de video, vat de kern samen of geeft context, en nodigt uit om te kijken.\n' : ''}
+${theme ? '\nThema van deze post (laat de post hierbij aansluiten): '+theme.text.trim()+'\n' : ''}${post.format ? '\nFormaat van deze post: '+post.format+'. Pas de caption hierop aan:\n- Reel: kort, sterke hook, één duidelijke CTA, hooguit enkele regels.\n- Carrousel: de caption teast en vult aan (bijv. "swipe voor..."), niet alles staat al in de caption zelf.\n- Post: de caption draagt zelf het volledige verhaal en mag wat langer zijn.\n- Talking head video: de caption ondersteunt de video, vat de kern samen of geeft context, en nodigt uit om te kijken.\n' : ''}
 Contentcategorie: ${pillar ? pillar.name : 'niet gekozen'}
 Waar deze post over gaat: ${post.idea.trim()}
 
@@ -593,11 +645,12 @@ function idealess(btn){
 
 /* ---------- AI: post-idee + formaat voorstellen ---------- */
 async function suggestIdea(post, btn){
-  if(!(state.skill||'').trim() && !(state.theme||'').trim()){
+  if(!(state.skill||'').trim() && !filledThemes().length){
     const o=btn.textContent; btn.textContent='vul eerst stap 1 of 2 in';
     setTimeout(()=>btn.textContent=o,1800); return;
   }
   const pillar = state.pillars.find(p=>p.id===post.pillarId);
+  const theme = pickTheme(post);
   const others = state.posts.filter(p=>p.id!==post.id && (p.idea||'').trim()).map(p=>'- '+p.idea.trim());
   const orig = btn.textContent; btn.disabled=true; btn.textContent='denkt na…';
   const sys = `Je bent een contentstrateeg. Je bedenkt één concreet, origineel post-idee en kiest het best passende formaat.
@@ -610,7 +663,7 @@ Antwoord met ALLEEN geldige JSON, zonder inleiding of code-fences: {"idee": "é�
 Gebruik nooit een gedachtestreepje (— of –).`;
   const usr = `Wie ik ben en wat ik doe:
 ${(state.skill||'').trim() || '(niet opgegeven)'}
-${(state.theme||'').trim() ? '\nThema van de maand: '+state.theme.trim() : ''}
+${theme ? '\nThema van deze post: '+theme.text.trim() : ''}
 ${pillar ? '\nContentcategorie voor deze post: '+pillar.name : ''}
 ${others.length ? '\nDeze onderwerpen zijn al gepland, kies iets anders:\n'+others.join('\n') : ''}
 
@@ -627,27 +680,36 @@ Geef één post-idee met passend formaat.`;
   }
 }
 
-/* ---------- AI: thema van de maand voorstellen ---------- */
+/* ---------- AI: thema's van de maand voorstellen ---------- */
 async function proposeTheme(){
   const btn = document.getElementById('themeBtn');
+  const orig = "Stel thema's voor";
   if(!(state.skill||'').trim()){
-    const o=btn.textContent; btn.textContent='vul eerst je verhaal in (stap 1)';
-    setTimeout(()=>btn.textContent=o,1900); return;
+    btn.textContent='vul eerst je verhaal in (stap 1)';
+    setTimeout(()=>btn.textContent=orig,1900); return;
   }
-  const orig = btn.textContent; btn.disabled=true; btn.textContent='denkt na…';
-  const sys = `Je bent een contentstrateeg. Je stelt één helder maandthema voor: een overkoepelende invalshoek die als rode draad door de social media van die maand loopt.
-Geef eerst een pakkende themanaam, daarna één korte zin die uitlegt waar het over gaat.
+  const empty = state.themes.filter(t=>!(t.text||'').trim());
+  if(!empty.length){
+    btn.textContent='wis een thema of klik + thema';
+    setTimeout(()=>btn.textContent=orig,2200); return;
+  }
+  const have = filledThemes().map(t=>'- '+t.text.trim());
+  btn.disabled=true; btn.textContent='denkt na…';
+  const sys = `Je bent een contentstrateeg. Je stelt ${empty.length} verschillende maandthema's voor: elk een eigen invalshoek die als rode draad door een deel van de social media van die maand loopt. De thema's moeten duidelijk van elkaar verschillen.
+Elk thema is één regel: een pakkende themanaam, een dubbelpunt, en één korte zin die uitlegt waar het over gaat.
 Schrijf in vlot Belgisch Nederlands. Gebruik NOOIT een gedachtestreepje (— of –); gebruik een komma, punt of haakjes.
-Antwoord kort en alleen het thema zelf, zonder inleiding of opsomming.`;
+Antwoord met ALLEEN een JSON-lijst van ${empty.length} strings, bijvoorbeeld ["Naam: één zin"].`;
   const usr = `Dit is wie ik ben en wat ik doe:
 ${state.skill.trim()}
-${(state.theme||'').trim() ? '\nMijn huidige thema-idee (verbeter of vervang dit): '+state.theme.trim()+'\n' : ''}
-Stel één maandthema voor.`;
+${have.length ? '\nDeze thema\'s heb ik al, kies iets anders:\n'+have.join('\n')+'\n' : ''}
+Stel ${empty.length} maandthema's voor.`;
   try{
-    let text = stripDashes(await callClaude(sys, usr));
-    if(text){ state.theme=text; themeEl.value=text; debSave(); }
-    else throw new Error('leeg');
-    btn.disabled=false; btn.textContent='Stel een ander thema voor';
+    const list = await callClaude(sys, usr, {json:true});
+    const items = (Array.isArray(list) ? list : []).map(x=>stripDashes(String(x||''))).filter(Boolean);
+    if(!items.length) throw {code:'leeg'};
+    empty.forEach((t,i)=>{ if(items[i]) t.text = items[i]; });
+    renderThemes(); renderThemeSelectors(); debSave();
+    btn.disabled=false; btn.textContent=orig;
   }catch(e){
     btnMsg(btn, orig, aiErr(e));
   }
@@ -801,34 +863,65 @@ function renderBalance(){
 /* ---------- voice ---------- */
 const skillEl = document.getElementById('skill');
 skillEl.oninput = ()=>{ state.skill=skillEl.value; debSave(); };
-const themeEl = document.getElementById('theme');
-themeEl.oninput = ()=>{ state.theme=themeEl.value; debSave(); };
+function renderThemes(){
+  const el = document.getElementById('themes');
+  el.innerHTML = '';
+  state.themes.forEach((t,i)=>{
+    const row = document.createElement('div'); row.className='theme-row';
+    const nr = document.createElement('span'); nr.className='tnr'; nr.textContent = String(i+1).padStart(2,'0');
+    const inp = document.createElement('input');
+    inp.className='idea'; inp.id='theme-'+t.id; inp.value=t.text;
+    inp.placeholder = 'Themanaam: één zin waar het over gaat';
+    inp.oninput = ()=>{ t.text=inp.value; renderThemeSelectors(); debSave(); };
+    const x = document.createElement('button');
+    x.className='x'; x.textContent='×';
+    x.title = state.themes.length > MIN_THEMES ? 'Verwijder thema' : 'Wis thema';
+    x.onclick = ()=>{
+      if(state.themes.length > MIN_THEMES) state.themes = state.themes.filter(q=>q.id!==t.id);
+      else t.text = '';
+      state.posts.forEach(po=>{ if(po.themeId===t.id) po.themeId=''; });
+      renderThemes(); renderThemeSelectors(); debSave();
+    };
+    row.appendChild(nr); row.appendChild(inp); row.appendChild(x);
+    el.appendChild(row);
+  });
+}
+document.getElementById('addTheme').onclick = ()=>{
+  state.themes.push({id:newId('t'), text:''});
+  renderThemes(); debSave();
+  const last = state.themes[state.themes.length-1];
+  document.getElementById('theme-'+last.id)?.focus();
+};
 document.getElementById('themeBtn').onclick = ()=>proposeTheme();
 
 /* ---------- kopieer / reset ---------- */
 document.getElementById('copyBtn').onclick = ()=>{
   let out = `CONTENT BATCH\n\n`;
-  if((state.theme||'').trim()) out += `Thema van de maand:\n${state.theme.trim()}\n\n`;
+  const ft = filledThemes();
+  if(ft.length){ out += `Thema's van de maand:\n`; ft.forEach(t=>out+=`• ${t.text.trim()}\n`); out += `\n`; }
   out += `Categorieën:\n`;
   state.pillars.forEach(p=>out+=`• ${p.name}\n`);
   out+=`\nJouw verhaal / basis:\n${state.skill||'(leeg)'}\n\nPosts:\n`;
   state.posts.forEach((po,i)=>{
     const p=state.pillars.find(q=>q.id===po.pillarId);
-    out+=`\n${String(i+1).padStart(2,'0')}: ${p?p.name:'geen categorie'}${po.format?' ('+po.format+')':''}\nIdee: ${po.idea||'-'}\n${po.caption?('Caption:\n'+po.caption+'\n'):''}`;
+    const t=state.themes.find(q=>q.id===po.themeId && (q.text||'').trim());
+    out+=`\n${String(i+1).padStart(2,'0')}: ${p?p.name:'geen categorie'}${po.format?' ('+po.format+')':''}\n${t?'Thema: '+t.text.trim()+'\n':''}Idee: ${po.idea||'-'}\n${po.caption?('Caption:\n'+po.caption+'\n'):''}`;
   });
   navigator.clipboard.writeText(out).then(()=>flash('gekopieerd ✓'))
     .catch(()=>flash('kopiëren lukte niet'));
 };
 
 /* ---------- export naar tabel ---------- */
-const TABLE_HEAD = ['Nr','Categorie','Format','Idee','Caption','Foto','Datum','Kanaal'];
+const TABLE_HEAD = ['Nr','Categorie','Thema','Format','Idee','Caption','Foto','Datum','Kanaal'];
 function flatten(s){ return (s||'').replace(/\s*\n+\s*/g,' ').replace(/\t/g,' ').replace(/\s{2,}/g,' ').trim(); }
 function tableRows(flat){
   return state.posts.map((po,i)=>{
     const p = state.pillars.find(q=>q.id===po.pillarId);
+    const t = state.themes.find(q=>q.id===po.themeId);
     return [
       String(i+1).padStart(2,'0'),
       p ? p.name : '',
+      t ? (flat ? flatten(t.text) : (t.text||'').trim()) : '',
       po.format || '',
       flat ? flatten(po.idea) : (po.idea||''),
       flat ? flatten(po.caption) : (po.caption||''),
@@ -911,8 +1004,7 @@ function stripDashes(s){
 }
 function renderAll(){
   skillEl.value = state.skill||'';
-  themeEl.value = state.theme||'';
-  renderPillars(); renderBatch(); renderFeed(); renderBalance();
+  renderPillars(); renderThemes(); renderBatch(); renderFeed(); renderBalance();
 }
 
 load();
